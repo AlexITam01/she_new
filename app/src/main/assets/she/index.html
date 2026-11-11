@@ -254,6 +254,8 @@
             font-family: inherit; font-size: 15px; cursor: pointer;
         }
         #run-shell-btn:disabled { opacity: 0.5; cursor: default; }
+        #run-shell-btn.scan { background: #0f2a1a; border-color: #3ddc84; font-size: 17px; padding: 12px 20px; }
+        #shell-hint { margin-top: 6px; font-size: 11px; color: #888; }
         #shell-output {
             margin-top: 8px; width: 100%; max-height: 200px; overflow-y: auto;
             padding: 10px 12px; background: #000; border: 1px solid #1a1a1a;
@@ -383,6 +385,7 @@
         <div id="shell-area">
             <pre id="shell-cmd"></pre>
             <button id="run-shell-btn" type="button">Run in Termux</button>
+            <div id="shell-hint"></div>
             <pre id="shell-output" aria-live="polite"></pre>
         </div>
 
@@ -419,14 +422,43 @@
             var shellOutEl = document.getElementById('shell-output');
             var runShellBtn = document.getElementById('run-shell-btn');
             var pendingShellCmd = '';
+            // Shell block parsing — fixed 2026-11-11:
+            // - the old code took split('\n')[0], so a blank first line
+            //   (```shell\n\nnmap ...) produced an EMPTY command and no
+            //   usable button — exactly the "it just said ```shell" bug.
+            //   Now: accept ```shell / ```bash / ```sh, take the first
+            //   NON-EMPTY line.
+            // - an empty block now shows a hint instead of vanishing, so
+            //   Alex can see what went wrong and re-ask.
+            var shellHintEl = document.getElementById('shell-hint');
             function showShellCmd(text) {
-                var m = /```shell\s*\n([\s\S]*?)```/.exec(text);
-                if (m && m[1].trim()) { pendingShellCmd = m[1].trim().split('\n')[0].trim(); shellCmdEl.textContent = '$ ' + pendingShellCmd; shellArea.classList.add('show'); }
-                else { pendingShellCmd = ''; shellArea.classList.remove('show'); }
+                var m = /```(?:shell|bash|sh)\s*\n([\s\S]*?)```/.exec(text);
+                if (!m) { pendingShellCmd = ''; shellArea.classList.remove('show'); return; }
+                var first = m[1].split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l; })[0] || '';
+                if (!first) {
+                    pendingShellCmd = '';
+                    shellCmdEl.textContent = 'guh… empty command — ask again, e.g. "please run nmap -sV 127.0.0.1"';
+                    shellHintEl.textContent = '';
+                    runShellBtn.disabled = true;
+                    shellArea.classList.add('show');
+                    return;
+                }
+                pendingShellCmd = first;
+                shellCmdEl.textContent = '$ ' + pendingShellCmd;
+                // Port scans get a prominent one-tap button. No auto-run:
+                // the user must tap. Scans are localhost-only by design.
+                var isScan = /^nmap\b/.test(pendingShellCmd);
+                runShellBtn.disabled = false;
+                runShellBtn.classList.toggle('scan', isScan);
+                runShellBtn.textContent = isScan ? '▶ Run port scan (localhost only)' : 'Run in Termux';
+                shellHintEl.textContent = isScan ? 'localhost only • up to 60s • tap once — do not tap twice' : '';
+                shellArea.classList.add('show');
             }
             runShellBtn.addEventListener('click', function() {
                 if (!pendingShellCmd) return;
-                runShellBtn.disabled = true; shellOutEl.textContent = 'running…';
+                runShellBtn.disabled = true;
+                var isScan = /^nmap\b/.test(pendingShellCmd);
+                shellOutEl.textContent = isScan ? 'running port scan… (up to 60s, do not tap twice)' : 'running…';
                 fetch(API + '/shell', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-She-Token': SHE_TOKEN }, body: JSON.stringify({ cmd: pendingShellCmd }) })
                 .then(function(r) { return r.json().then(function(j) { return { status: r.status, body: j }; }); })
                 .then(function(x) { shellOutEl.textContent = x.body.output ? x.body.output : (x.body.error || ('HTTP ' + x.status)); })
