@@ -63,7 +63,7 @@ she-app/
     start.sh                 — Termux startup script
   android/                   — the APK project (push this to GitHub)
     app/src/main/java/com/she/app/MainActivity.kt
-    app/src/main/assets/.she/index.html   — bundled web face
+    app/src/main/assets/she/index.html   — bundled web face
     app/src/main/res/mipmap-*/ic_launcher.png — Furret launcher icon
     .github/workflows/build-apk.yml       — GitHub Actions debug build
 ```
@@ -114,7 +114,7 @@ she-app/
    permission, declared in the manifest.)
 3. Shows "Starting She…" with the Furret icon, polling
    `http://127.0.0.1:8080/state` for up to 60 seconds.
-4. Loads the bundled `assets/.she/index.html` in a WebView
+4. Loads the bundled `assets/she/index.html` in a WebView
    (JavaScript + DOM storage on, cleartext allowed only to
    `127.0.0.1`/`localhost`). The page is the face of the app.
 5. When She replies with a ` ```shell ` block, a **Run in Termux**

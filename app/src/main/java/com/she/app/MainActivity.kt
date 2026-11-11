@@ -39,7 +39,11 @@ import java.util.UUID
  *     and node kali-bridge.js (:8080) if they are not already running.
  *  3. Polls http://127.0.0.1:8080/state for up to ~60s, showing
  *     "Starting She…" with the Furret icon.
- *  4. Shows the bundled web face (assets/.she/index.html) in a WebView.
+ *  4. Shows the bundled web face (assets/she/index.html) in a WebView.
+ *     NOTE: the asset folder must NOT be named ".she" — Android's asset
+ *     packaging (AAPT/Gradle) excludes dot-directories, so a ".she"
+ *     folder is never packaged into the APK and the WebView fails with
+ *     ERR_FILE_NOT_FOUND even though the bridge is up.
  *     The page talks to the bridge on localhost:8080; the shell token
  *     is available to it via the SheBridge JavascriptInterface, so
  *     "Run in Termux" can POST /shell with X-She-Token.
@@ -123,7 +127,13 @@ class MainActivity : AppCompatActivity() {
         webView.addJavascriptInterface(SheBridge(), "SheBridge")
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedError(view: WebView, errorCode: Int, description: String, failingUrl: String) {
-                splashText.text = "Could not reach She in Termux ($description). Open Termux and run: bash ~/.she/start.sh"
+                // A file:// failure is a missing bundled page in the APK,
+                // NOT a Termux/bridge failure — do not blame Termux for it.
+                if (failingUrl.startsWith("file://")) {
+                    splashText.text = "Bundled page missing in the APK ($description).\nThis app build is broken — reinstall a newer She APK.\nTermux is fine; do not re-run start.sh for this."
+                } else {
+                    splashText.text = "Could not reach She in Termux ($description). Open Termux and run: bash ~/.she/start.sh"
+                }
                 splash.visibility = View.VISIBLE
                 webView.visibility = View.GONE
             }
@@ -164,7 +174,7 @@ class MainActivity : AppCompatActivity() {
                 if (up) {
                     splash.visibility = View.GONE
                     webView.visibility = View.VISIBLE
-                    webView.loadUrl("file:///android_asset/.she/index.html")
+                    webView.loadUrl("file:///android_asset/she/index.html")
                 } else {
                     splashText.text = "She did not start in 60s.\nOpen Termux and run:\nbash ~/.she/start.sh\nthen reopen this app.\n(Check ~/.she/she.log for errors.)"
                 }
