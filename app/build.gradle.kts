@@ -38,6 +38,29 @@ android {
     }
 }
 
+// Launcher icons are stored as base64 text in app/icons-b64/ because the
+// GitHub API used to push this repo cannot upload binary files (it stores
+// base64 as literal text, double-encoding the PNG). This task decodes them
+// into src/main/res/ at build time, before resources are merged, so the
+// Furret launcher icon and splash image are real PNGs in the built APK.
+// The .b64 files are left in the repo; the decoded PNGs are build outputs
+// and are not committed.
+tasks.register("decodeIcons") {
+    doLast {
+        val iconsDir = file("icons-b64")
+        if (!iconsDir.exists()) return
+        iconsDir.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".png.b64") }
+            .forEach { b64File ->
+                val rel = b64File.relativeTo(iconsDir).path.removeSuffix(".b64")
+                val out = file("src/main/res/$rel")
+                out.parentFile.mkdirs()
+                out.writeBytes(java.util.Base64.getMimeDecoder().decode(b64File.readText()))
+            }
+    }
+}
+tasks.named("preBuild") { dependsOn("decodeIcons") }
+
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
