@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#111111">
+
+    <WebView
+        android:id="@+id/webview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <!-- Splash while Termux / the bridge starts up -->
+    <LinearLayout
+        android:id="@+id/splash"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp">
+
+        <ImageView
+            android:id="@+id/splash_icon"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:contentDescription="She — Furret"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:id="@+id/splash_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Starting She…"
+            android:textColor="#dddddd"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <!-- Shown when Termux is not installed -->
+    <LinearLayout
+        android:id="@+id/termux_missing"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="She needs Termux to run.\nInstall Termux, then copy ~/.she/ and run start.sh once (see the README), then reopen this app."
+            android:textColor="#dddddd"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/install_termux_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Install Termux" />
+    </LinearLayout>
+</FrameLayout>
