@@ -6,7 +6,9 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -16,7 +18,6 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,13 @@ import java.util.UUID
  *     `SHE_TOKEN=<token> bash $HOME/.she/start.sh` via the Termux
  *     RUN_COMMAND service. start.sh starts llama-server (GGUF, :8090)
  *     and node kali-bridge.js (:8080) if they are not already running.
+ *     This must be fired with startForegroundService(), NOT
+ *     startService(): Termux's RunCommandService is a foreground
+ *     service, and on Android 12+ (targetSdk 34 here) startService()
+ *     throws IllegalStateException "Not allowed to start service
+ *     Intent" — the toast Alex saw on 2026-11-11. If firing it fails
+ *     anyway, that is non-fatal: the bridge may already be running, so
+ *     the failure is only logged and the bridge poll below still runs.
  *  3. Polls http://127.0.0.1:8080/state for up to ~60s, showing
  *     "Starting She…" with the Furret icon.
  *  4. Shows the bundled web face (assets/she/index.html) in a WebView.
@@ -58,6 +66,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var splashText: TextView
     private lateinit var termuxMissing: View
     private var shellToken: String = ""
+    // Set if firing start.sh in Termux failed. Kept quiet on purpose:
+    // the bridge may already be running, so the poll below still runs
+    // and this is only surfaced if the bridge then fails to answer.
+    private var termuxStartError: String? = null
 
     companion object {
         private const val TERMUX_PACKAGE = "com.termux"
@@ -147,6 +159,15 @@ class MainActivity : AppCompatActivity() {
         // com.termux.RUN_COMMAND mechanism; it requires the
         // com.termux.permission.RUN_COMMAND permission (declared in the
         // manifest) and the user to have run Termux at least once.
+        // Android 8+ / 12+: use startForegroundService(), because
+        // RunCommandService promotes itself to a foreground service and
+        // startService() throws "Not allowed to start service Intent"
+        // on Android 14 (targetSdk 34). Fall back to startService()
+        // only below API 26, where startForegroundService() does not
+        // exist. This is a best effort — if it fails, do NOT toast as
+        // if She is broken: the bridge may already be running, so
+        // record the error, log it, and still poll the bridge below.
+        // It is only shown if the bridge then fails to answer.
         val intent = Intent("com.termux.RUN_COMMAND").apply {
             component = ComponentName(TERMUX_PACKAGE, "com.termux.app.RunCommandService")
             putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
@@ -155,9 +176,15 @@ class MainActivity : AppCompatActivity() {
             putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0")
         }
         try {
-            startService(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            termuxStartError = null
         } catch (e: Exception) {
-            Toast.makeText(this, "Could not start Termux: ${e.message}. Open Termux and run bash ~/.she/start.sh", Toast.LENGTH_LONG).show()
+            termuxStartError = e.message
+            Log.w("She", "Could not start Termux RUN_COMMAND; bridge may already be running, polling anyway", e)
         }
     }
 
@@ -176,7 +203,13 @@ class MainActivity : AppCompatActivity() {
                     webView.visibility = View.VISIBLE
                     webView.loadUrl("file:///android_asset/she/index.html")
                 } else {
-                    splashText.text = "She did not start in 60s.\nOpen Termux and run:\nbash ~/.she/start.sh\nthen reopen this app.\n(Check ~/.she/she.log for errors.)"
+                    // Only now, when the bridge really is down, is a
+                    // failed Termux start worth mentioning — and only
+                    // as a hint, not as the whole story.
+                    val termuxHint = termuxStartError?.let {
+                        "\n(Termux start was also blocked: $it\nIf the bridge is not running, open Termux manually.)"
+                    } ?: ""
+                    splashText.text = "She did not start in 60s.\nOpen Termux and run:\nbash ~/.she/start.sh\nthen reopen this app.\n(Check ~/.she/she.log for errors.)$termuxHint"
                 }
             }
         }
