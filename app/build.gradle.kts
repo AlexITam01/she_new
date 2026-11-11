@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -63,7 +65,7 @@ tasks.register("decodeIcons") {
                 val rel = b64File.relativeTo(iconsDir).path.removeSuffix(".b64")
                 val out = project.layout.projectDirectory.file("src/main/res/$rel").asFile
                 out.parentFile.mkdirs()
-                out.writeBytes(java.util.Base64.getMimeDecoder().decode(b64File.readText()))
+                out.writeBytes(Base64.getMimeDecoder().decode(b64File.readText()))
             }
     }
 }
