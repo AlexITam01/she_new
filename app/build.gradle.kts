@@ -47,13 +47,19 @@ android {
 // and are not committed.
 tasks.register("decodeIcons") {
     doLast {
-        val iconsDir = file("icons-b64")
-        if (!iconsDir.exists()) return
+        // NOTE: bare file("...") and a bare `return` do NOT work inside a
+        // doLast {} action in the Kotlin DSL — the lambda receiver is the
+        // Task, not the Project, so file() is unresolved and `return` is
+        // illegal there. That broke script compilation and failed the
+        // "Build debug APK" step (run 43010930801). Use
+        // project.layout.projectDirectory explicitly, and return@doLast.
+        val iconsDir = project.layout.projectDirectory.dir("icons-b64").asFile
+        if (!iconsDir.exists()) return@doLast
         iconsDir.walkTopDown()
             .filter { it.isFile && it.name.endsWith(".png.b64") }
             .forEach { b64File ->
                 val rel = b64File.relativeTo(iconsDir).path.removeSuffix(".b64")
-                val out = file("src/main/res/$rel")
+                val out = project.layout.projectDirectory.dir("src/main/res/$rel").asFile
                 out.parentFile.mkdirs()
                 out.writeBytes(java.util.Base64.getMimeDecoder().decode(b64File.readText()))
             }
