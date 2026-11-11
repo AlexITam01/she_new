@@ -422,28 +422,58 @@
             var shellOutEl = document.getElementById('shell-output');
             var runShellBtn = document.getElementById('run-shell-btn');
             var pendingShellCmd = '';
-            // Shell block parsing — fixed 2026-11-11:
+            // Shell block parsing — fixed 2026-11-11 (twice):
             // - the old code took split('\n')[0], so a blank first line
             //   (```shell\n\nnmap ...) produced an EMPTY command and no
             //   usable button — exactly the "it just said ```shell" bug.
-            //   Now: accept ```shell / ```bash / ```sh, take the first
-            //   NON-EMPTY line.
-            // - an empty block now shows a hint instead of vanishing, so
-            //   Alex can see what went wrong and re-ask.
+            //   Now: take the first NON-EMPTY line.
+            // - 2026-11-11 (2nd fix): the LLM emitted ```nmap (language
+            //   tag "nmap"), not ```shell, and the parser only matched
+            //   ```shell|bash|sh — so a ```nmap fence was treated as
+            //   plain text, no command, no Run button. Now: accept ANY
+            //   fenced block (any tag, empty tag, or no closing fence),
+            //   and also a bare command line with no fence at all.
+            //   A line only becomes a runnable command if it starts with
+            //   an allowlisted binary — the bridge re-validates anyway.
             var shellHintEl = document.getElementById('shell-hint');
-            function showShellCmd(text) {
-                var m = /```(?:shell|bash|sh)\s*\n([\s\S]*?)```/.exec(text);
-                if (!m) { pendingShellCmd = ''; shellArea.classList.remove('show'); return; }
-                var first = m[1].split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l; })[0] || '';
-                if (!first) {
-                    pendingShellCmd = '';
-                    shellCmdEl.textContent = 'guh… empty command — ask again, e.g. "please run nmap -sV 127.0.0.1"';
-                    shellHintEl.textContent = '';
-                    runShellBtn.disabled = true;
-                    shellArea.classList.add('show');
-                    return;
+            var ALLOWED_BINS = ['ls','pwd','whoami','uname','date','echo','cat','grep','find','ps','df','free','uptime','which','hostname','head','tail','wc','sort','lsblk','ip','ss','apt','nmap'];
+            function isCommandLine(line) {
+                if (!line) return false;
+                var clean = line.replace(/^\$\s*/, '').replace(/^>\s*/, '').trim();
+                if (!clean) return false;
+                var bin = clean.split(/\s+/)[0];
+                return ALLOWED_BINS.indexOf(bin) !== -1;
+            }
+            function firstCommandLine(lines) {
+                for (var i = 0; i < lines.length; i++) {
+                    var l = lines[i].trim();
+                    if (isCommandLine(l)) return l.replace(/^\$\s*/, '').replace(/^>\s*/, '').trim();
                 }
-                pendingShellCmd = first;
+                return '';
+            }
+            function showShellCmd(text) {
+                var cmd = '';
+                // 1) Any fenced block: ```<any tag>\n<body>\n``` — also
+                //    tolerates a missing closing fence (truncated stream).
+                //    The tag itself may even carry the command, e.g.
+                //    ```nmap -sV 127.0.0.1``` on one line.
+                var fence = /```([^\n`]*)?\n?([\s\S]*?)(?:```|$)/.exec(text);
+                if (fence) {
+                    var tag = (fence[1] || '').trim();
+                    var bodyLines = (fence[2] || '').split('\n');
+                    cmd = firstCommandLine(bodyLines);
+                    if (!cmd && tag) {
+                        // One-line fence: tag line is the command.
+                        var tagCmd = firstCommandLine([tag]);
+                        if (tagCmd) cmd = tagCmd;
+                    }
+                }
+                // 2) No (usable) fence: bare command on its own line,
+                //    e.g. the reply is just "nmap -sV 127.0.0.1" with
+                //    no backticks at all.
+                if (!cmd) cmd = firstCommandLine(text.split('\n'));
+                if (!cmd) { pendingShellCmd = ''; shellArea.classList.remove('show'); return; }
+                pendingShellCmd = cmd;
                 shellCmdEl.textContent = '$ ' + pendingShellCmd;
                 // Port scans get a prominent one-tap button. No auto-run:
                 // the user must tap. Scans are localhost-only by design.
